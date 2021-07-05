@@ -35,9 +35,9 @@ unsigned long t_0_close_button = 0;
 int const bounce_delay_close_button = 10;
 
 // Close signal timer variables
-unsigned long t_closing = 0;         // holds new records of time after a closing trigger
-unsigned long t_0_closing = 0;       // holds initial time when the hatch started closing
-int const time_to_close = 30 * 1000; // how much time does the hatch take to close
+unsigned long t_closing = 0;               // holds new records of time after a closing trigger
+unsigned long t_0_closing = 0;             // holds initial time when the hatch started closing
+unsigned long const time_to_close = 90000; // 90s - how much time does the hatch take to close
 
 // State variables
 enum state
