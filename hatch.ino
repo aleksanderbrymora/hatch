@@ -21,7 +21,7 @@ enum button_states
 
 // Constants
 unsigned long const time_to_close = 90000; // 90s - how much time does the hatch take to close
-int const bounce_delay = 10;               // tells how long should the button hold the HIGH value till its triggered
+int const bounce_delay = 10;               // tells how long should the button hold the HIGH value till its triggered (debounce time)
 
 // Open button variables
 int state_open_button = button_states::reset;
@@ -157,7 +157,11 @@ void sm_debounce_button(int pin, int *state_button, int *val_button, unsigned lo
     break;
 
   case button_states::triggered:
-    debug("Triggered open button");
+    // debugging part
+    char message[50];
+    sprintf(message, "Button (pin: %d) was triggered", pin);
+    debug(message);
+    // actual code
     *state_button = button_states::reset;
     break;
 
@@ -195,7 +199,7 @@ void opening_hatch()
 
 void rest_hatch()
 {
-  if (state_open_button == button_states::triggered)
+  if (state_open_button == button_states::triggered || state_emergency_button == button_states::triggered)
   {
     state_hatch = state::opening;
   };
@@ -237,12 +241,13 @@ void moving_hatch()
     t_closing = millis();
   }
 
-  if (prev_state_hatch == state::closing && t_closing - t_0_closing > time_to_close)
+  if (prev_state_hatch == state::closing && t_closing - t_0_closing >= time_to_close)
   {
     Serial.println("hatch closed signal");
     state_hatch = state::closed;
   }
-  else if (hatch_error == HIGH)
+
+  if (hatch_error == HIGH)
   {
     if (state_hatch == state::closing)
     {
@@ -253,7 +258,7 @@ void moving_hatch()
       state_hatch = state::opening_error;
     }
   }
-  else if (state_open_button == button_states::triggered)
+  else if (state_open_button == button_states::triggered && state_emergency_button == button_states::triggered)
   {
     if (prev_state_hatch == state::closing)
     {
