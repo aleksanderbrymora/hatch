@@ -4,20 +4,18 @@ int const hatch_open_relay_pin = 5;  // Relay controlling hatch in opening direc
 int const hatch_close_relay_pin = 6; // Relay controlling hatch in closing direction
 
 // Pins in
-int const close_button_pin = 12; // high if hatch is closed
-int const open_button_pin = 10;  // a button that opens/closes the hatch
-int const overcurrent_pin = 11;  // a input from overcurrent protection board that indicates an error
+int const open_button_pin = 10; // a button that opens/closes the hatch
+int const overcurrent_pin = 11; // a input from overcurrent protection board that indicates an error
 
 // Button states for state machine
 enum button_states
 {
-  reset,        // one time, catch all condition
-  start,        // checks value of button, if pressed moves on to `go`
-  go,           // records the time of the press and moves on to wait
-  wait,         // wait for the button to settle (debouncing)
-  armed,        // makes sure trigger only happens once the button is released
-  triggered,    // one time pulse of button
-  post_trigger, // used for the close_button so the trigger happens once
+  reset,     // one time, catch all condition
+  start,     // checks value of button, if pressed moves on to `go`
+  go,        // records the time of the press and moves on to wait
+  wait,      // wait for the button to settle (debouncing)
+  armed,     // makes sure trigger only happens once the button is released
+  triggered, // one time pulse of button
 };
 
 // Open button variables
@@ -34,7 +32,12 @@ int state_prev_close_button = reset;
 int val_close_button = 0;
 unsigned long t_close_button = 0;
 unsigned long t_0_close_button = 0;
-unsigned long bounce_delay_close_button = 10;
+int const bounce_delay_close_button = 10;
+
+// Close signal timer variables
+unsigned long t_closing = 0;         // holds new records of time after a closing trigger
+unsigned long t_0_closing = 0;       // holds initial time when the hatch started closing
+int const time_to_close = 30 * 1000; // how much time does the hatch take to close
 
 // State variables
 enum state
@@ -48,7 +51,7 @@ enum state
   rest,          // After closed waiting for a button press
 };
 int state_hatch = state::opening;
-int prev_state_hatch = state::opening;
+int prev_state_hatch = state_hatch;
 int hatch_error = LOW; // if the overcurrent protection kicks in this should be turned to true
 bool DEBUG = true;     // should the debugging be turned on
 
@@ -74,7 +77,6 @@ void setup()
   pinMode(hatch_close_relay_pin, OUTPUT);
 
   // Setting inputs
-  pinMode(close_button_pin, INPUT_PULLUP);
   pinMode(open_button_pin, INPUT_PULLUP);
   pinMode(overcurrent_pin, INPUT_PULLUP);
 };
@@ -105,55 +107,6 @@ void loop()
     break;
   case state::rest:
     rest_hatch();
-    break;
-  }
-};
-
-void sm_close_button()
-{
-  switch (state_close_button)
-  {
-  case button_states::reset:
-    state_close_button = button_states::start;
-    break;
-
-  case button_states::start:
-    val_close_button = digitalRead(close_button_pin);
-    if (val_close_button == LOW)
-    {
-      state_close_button = button_states::go;
-    }
-    break;
-
-  case button_states::go:
-    t_0_close_button = millis();
-    state_close_button = button_states::wait;
-    break;
-
-  case button_states::wait:
-    val_close_button = digitalRead(close_button_pin);
-    t_close_button = millis();
-    if (val_close_button == HIGH)
-    {
-      state_close_button = button_states::reset;
-    }
-    if (t_close_button - t_0_close_button > bounce_delay_close_button)
-    {
-      state_close_button = button_states::triggered;
-    }
-    break;
-
-  case button_states::triggered:
-    debug("Triggered close button");
-    state_close_button = button_states::post_trigger;
-    break;
-
-  case button_states::post_trigger:
-    val_close_button = digitalRead(close_button_pin);
-    if (val_close_button == HIGH)
-    {
-      state_close_button = button_states::reset;
-    }
     break;
   }
 };
@@ -210,6 +163,8 @@ void sm_open_button()
 void closing_hatch()
 {
   prev_state_hatch = state_hatch;
+  t_0_closing = millis();
+  t_closing = t_0_closing;
   debug("Closing");
   control_actuator(actuator_direction::close);
   control_lights(lights::on);
@@ -265,8 +220,13 @@ and light once and then check for the conditions in this function.
 */
 void moving_hatch()
 {
-  //    prev_state_hatch = state_hatch;
-  if (state_close_button == button_states::triggered)
+  // updating the time for each loop so the condition after works
+  if (prev_state_hatch == state::closing)
+  {
+    t_closing = millis();
+  }
+
+  if (prev_state_hatch == state::closing && t_closing - t_0_closing > time_to_close)
   {
     Serial.println("hatch closed signal");
     state_hatch = state::closed;
@@ -298,7 +258,6 @@ void moving_hatch()
 void update_signals()
 {
   sm_open_button();
-  sm_close_button();
   hatch_error = !digitalRead(overcurrent_pin);
 };
 
