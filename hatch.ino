@@ -4,8 +4,9 @@ int const hatch_open_relay_pin = 5;  // Relay controlling hatch in opening direc
 int const hatch_close_relay_pin = 6; // Relay controlling hatch in closing direction
 
 // Pins in
-int const open_button_pin = 10; // a button that opens/closes the hatch
-int const overcurrent_pin = 11; // a input from overcurrent protection board that indicates an error
+int const open_button_pin = 10;      // a button that opens/closes the hatch
+int const overcurrent_pin = 11;      // a input from overcurrent protection board that indicates an error
+int const emergency_button_pin = 12; // a button inside the cellar that will open the hatch
 
 // Button states for state machine
 enum button_states
@@ -18,26 +19,27 @@ enum button_states
   triggered, // one time pulse of button
 };
 
+// Constants
+unsigned long const time_to_close = 90000; // 90s - how much time does the hatch take to close
+int const bounce_delay = 10;               // tells how long should the button hold the HIGH value till its triggered
+
 // Open button variables
-int state_open_button = reset;
-int state_prev_open_button = reset;
+int state_open_button = button_states::reset;
+int state_prev_open_button = state_open_button;
 int val_open_button = 0;
 unsigned long t_open_button = 0;
 unsigned long t_0_open_button = 0;
-unsigned long bounce_delay_open_button = 10;
 
-// Close button variables
-int state_close_button = reset;
-int state_prev_close_button = reset;
-int val_close_button = 0;
-unsigned long t_close_button = 0;
-unsigned long t_0_close_button = 0;
-int const bounce_delay_close_button = 10;
+// Emergency button variables
+int state_emergency_button = button_states::reset;
+int state_prev_emergency_button = state_open_button;
+int val_emergency_button = 0;
+unsigned long t_emergency_button = 0;
+unsigned long t_0_emergency_button = 0;
 
 // Close signal timer variables
-unsigned long t_closing = 0;               // holds new records of time after a closing trigger
-unsigned long t_0_closing = 0;             // holds initial time when the hatch started closing
-unsigned long const time_to_close = 90000; // 90s - how much time does the hatch take to close
+unsigned long t_closing = 0;   // holds new records of time after a closing trigger
+unsigned long t_0_closing = 0; // holds initial time when the hatch started closing
 
 // State variables
 enum state
@@ -48,7 +50,7 @@ enum state
   moving,        // used after the closing and opening state
   closing_error, // one time trigger for overcurrent protection, transitions to opening
   opening_error, // one time trigger for overcurrent protection, transitions to closing
-  rest,          // After closed waiting for a button press
+  rest,          // after closed waiting for a button press
 };
 int state_hatch = state::opening;
 int prev_state_hatch = state_hatch;
@@ -78,6 +80,7 @@ void setup()
 
   // Setting inputs
   pinMode(open_button_pin, INPUT_PULLUP);
+  pinMode(emergency_button_pin, INPUT_PULLUP);
   pinMode(overcurrent_pin, INPUT_PULLUP);
 };
 
@@ -111,50 +114,58 @@ void loop()
   }
 };
 
-void sm_open_button()
+/**
+ * @brief State machine that debounces a button.
+ * @param pin which pin is the button connected to and should be debounced
+ * @param state_button a pointer to a value that stores a current state (`button_states`) of the button
+ * @param val_button a pointer to a variable that stores a value (`HIGH/LOW`) of the button
+ * @param t_0 a pointer to a time when button was pressed first
+ * @param t a pointer to a variable that stores time for each loop of the program
+ */
+void sm_debounce_button(int pin, int *state_button, int *val_button, unsigned long *t_0, unsigned long *t)
 {
-  switch (state_open_button)
+  switch (*state_button)
   {
   case button_states::reset:
-    state_open_button = button_states::start;
+    *state_button = button_states::start;
     break;
 
   case button_states::start:
-    val_open_button = digitalRead(open_button_pin);
-    if (val_open_button == LOW)
+    *val_button = digitalRead(pin);
+    if (*val_button == LOW)
     {
-      state_open_button = button_states::go;
+      *state_button = button_states::go;
     }
     break;
 
   case button_states::go:
-    t_0_open_button = millis();
-    state_open_button = button_states::wait;
+    *t_0 = millis();
+    *state_button = button_states::wait;
     break;
 
   case button_states::wait:
-    val_open_button = digitalRead(open_button_pin);
-    t_open_button = millis();
-    if (val_open_button == HIGH)
+    *val_button = digitalRead(pin);
+    *t = millis();
+    if (*val_button == HIGH)
     {
-      state_open_button = button_states::reset;
+      *state_button = button_states::reset;
     }
-    if (t_open_button - t_0_open_button > bounce_delay_open_button)
+    if (*t - *t_0 > bounce_delay)
     {
-      state_open_button = button_states::armed;
+      *state_button = button_states::armed;
     }
     break;
 
   case button_states::triggered:
     debug("Triggered open button");
-    state_open_button = button_states::reset;
+    *state_button = button_states::reset;
     break;
 
   case button_states::armed:
-    val_open_button = digitalRead(open_button_pin);
-    if (val_open_button == HIGH)
+    *val_button = digitalRead(pin);
+    if (*val_button == HIGH)
     {
-      state_open_button = button_states::triggered;
+      *state_button = button_states::triggered;
     }
     break;
   }
@@ -257,7 +268,8 @@ void moving_hatch()
 
 void update_signals()
 {
-  sm_open_button();
+  sm_debounce_button(open_button_pin, &state_open_button, &val_open_button, &t_0_open_button, &t_open_button);
+  sm_debounce_button(emergency_button_pin, &state_emergency_button, &val_open_button, &t_0_emergency_button, &t_emergency_button);
   hatch_error = !digitalRead(overcurrent_pin);
 };
 
