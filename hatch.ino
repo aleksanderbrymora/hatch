@@ -281,8 +281,7 @@ void moving_hatch()
     Serial.println("hatch closed signal");
     state_hatch = state::closed;
   }
-
-  if (hatch_error == HIGH)
+  else if (hatch_error == HIGH)
   {
     if (state_hatch == state::closing)
     {
@@ -293,7 +292,7 @@ void moving_hatch()
       state_hatch = state::opening_error;
     }
   }
-  else if (state_open_button == button_states::triggered && state_emergency_button == button_states::triggered)
+  else if (state_open_button == button_states::triggered || state_emergency_button == button_states::triggered)
   {
     if (prev_state_hatch == state::closing)
     {
@@ -309,7 +308,7 @@ void moving_hatch()
 void update_signals()
 {
   sm_debounce_button(open_button_pin, &state_open_button, &val_open_button, &t_0_open_button, &t_open_button);
-  sm_debounce_button(emergency_button_pin, &state_emergency_button, &val_open_button, &t_0_emergency_button, &t_emergency_button);
+  sm_debounce_button(emergency_button_pin, &state_emergency_button, &val_emergency_button, &t_0_emergency_button, &t_emergency_button);
   hatch_error = !digitalRead(overcurrent_pin);
 };
 
@@ -390,4 +389,4 @@ void update_environment_readings()
   {
     t_env_check = millis();
   }
-}
+};
