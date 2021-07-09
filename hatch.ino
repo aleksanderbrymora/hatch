@@ -1,3 +1,26 @@
+#include <DHT.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// OLED Screen setup
+#define SCREEN_WIDTH 128    // OLED display width, in pixels
+#define SCREEN_HEIGHT 64    // OLED display height, in pixels
+#define OLED_RESET 4        // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Humidity + temperature sensor setup
+#define DHTPIN 8      // Digital pin connected to the DHT sensor
+#define DHTTYPE DHT11 // DHT 11
+DHT dht(DHTPIN, DHTTYPE);
+float temperature = 0;
+float humidity = 0;
+unsigned long t_env_check = 0;
+unsigned long t_0_env_check = 0;
+int const env_check_frequency = 10000; // how often should the environment be checked
+
 // Pins out
 int const lights_pin = 4;            // Relay controlling the leds
 int const hatch_open_relay_pin = 5;  // Relay controlling hatch in opening direction
@@ -82,11 +105,23 @@ void setup()
   pinMode(open_button_pin, INPUT_PULLUP);
   pinMode(emergency_button_pin, INPUT_PULLUP);
   pinMode(overcurrent_pin, INPUT_PULLUP);
+
+  dht.begin(); // starting humidity sensor
+
+  // Screen related stuff
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS))
+  {
+    Serial.println(F("SSD1306 allocation failed"));
+  }
+  display.clearDisplay();
+  display.setTextSize(3);
+  display.setTextColor(WHITE);
 };
 
 void loop()
 {
   update_signals();
+  update_environment_readings();
 
   switch (state_hatch)
   {
@@ -245,7 +280,7 @@ void moving_hatch()
   {
     Serial.println("hatch closed signal");
     state_hatch = state::closed;
-  } 
+  }
   else if (hatch_error == HIGH)
   {
     if (state_hatch == state::closing)
@@ -313,5 +348,45 @@ void debug(String status)
     Serial.print(state_hatch);
     Serial.print(" | Prev hatch state: ");
     Serial.println(prev_state_hatch);
+
+    Serial.print(F("Humidity: "));
+    Serial.print((int)humidity);
+    Serial.print(F("%  Temperature: "));
+    Serial.print((int)temperature);
+    Serial.println(F("°C "));
+  }
+};
+
+void update_environment_readings()
+{
+  if (t_env_check - t_0_env_check >= env_check_frequency)
+  {
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
+
+    if (!isnan(h))
+    {
+      humidity = h;
+    }
+
+    if (!isnan(t))
+    {
+      temperature = t;
+    }
+
+    display.clearDisplay();
+    display.setCursor(0, 20);
+    display.print((int)humidity);
+    display.print("% ");
+    display.print((int)temperature);
+    display.println("C");
+    display.display();
+
+    t_0_env_check = millis();
+    t_env_check = t_0_env_check;
+  }
+  else
+  {
+    t_env_check = millis();
   }
 };
