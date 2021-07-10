@@ -114,6 +114,7 @@ void setup()
     Serial.println(F("SSD1306 allocation failed"));
   }
   display.clearDisplay();
+  display.setCursor(0, 20);
   display.setTextSize(3);
   display.setTextColor(WHITE);
 };
@@ -220,6 +221,7 @@ void closing_hatch()
   control_lights(lights::on);
   state_hatch = state::moving;
   debug("Moving");
+  signal_state("Closing");
 };
 
 void opening_hatch()
@@ -230,6 +232,7 @@ void opening_hatch()
   control_lights(lights::on);
   state_hatch = state::moving;
   debug("Moving");
+  signal_state("Opening");
 };
 
 void rest_hatch()
@@ -248,12 +251,14 @@ void closed_hatch()
   control_lights(lights::off);
   state_hatch = state::rest;
   debug("Resting");
+  signal_state("Closed");
 };
 
 void closing_error_hatch()
 {
   debug("Closing error");
   state_hatch = state::opening;
+  signal_state("Error closing");
 };
 
 void opening_error_hatch()
@@ -261,6 +266,7 @@ void opening_error_hatch()
   prev_state_hatch = state_hatch;
   debug("Opening error");
   state_hatch = state::closing;
+  signal_state("Error opening");
 };
 
 /*
@@ -375,7 +381,6 @@ void update_environment_readings()
     }
 
     display.clearDisplay();
-    display.setCursor(0, 20);
     display.print((int)humidity);
     display.print("% ");
     display.print((int)temperature);
@@ -390,3 +395,13 @@ void update_environment_readings()
     t_env_check = millis();
   }
 };
+
+void signal_state(String state_name)
+{
+  // making sure the state is shown for the 10 ish seconds
+  t_0_env_check = millis();
+  t_env_check = t_0_env_check;
+  display.clearDisplay();
+  display.print(state_name);
+  display.display();
+}
